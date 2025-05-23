@@ -15,6 +15,6 @@ This project is the culminating requirement for the **Methods of Research** cour
 * **Emotion Label Overlay** – Clearly displays emotions over detected faces in the video stream.
 * **Video Recording** – Automatically saves each session as a local video file for later analysis.
 * **Fully Offline Processing** – All detection and classification is performed locally for security and privacy.
-* **Six Emotions Recognized** – `Happy`, `Sad`, `Angry`, `Surprise`, `Fear`, `Neutral`.
+* **Six Emotions Recognized** – `Happy`, `Sad`, `Angry`, `Surprise`, `Fear`, `Suprised`, `Neutral`.
 
 ---
