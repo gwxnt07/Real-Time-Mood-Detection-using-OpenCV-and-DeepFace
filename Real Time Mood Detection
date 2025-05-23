@@ -1,0 +1,140 @@
+import cv2
+import numpy as np
+from deepface import DeepFace
+from tkinter import *
+from tkinter import ttk
+from PIL import Image, ImageTk
+import pyttsx3
+import datetime
+
+# === Initialize Text-To-Speech ===
+engine = pyttsx3.init()
+engine.setProperty('rate', 160)
+engine.setProperty('volume', 0.8)
+
+# === Global State ===
+running = False
+last_announced = None
+frame_count = 0
+after_id = None
+
+# === Load Models ===
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+model = DeepFace.build_model("Emotion")
+emotion_labels = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
+
+# === GUI Setup ===
+root = Tk()
+root.title("Real-Time Emotion Detector")
+root.geometry("740x720")  # Increased height for visibility
+root.configure(bg="#ffffff")
+root.resizable(True, True)
+
+style = ttk.Style()
+style.configure("TButton", font=("Segoe UI", 11), padding=6)
+
+title_label = Label(root, text="Real-Time Emotion Detection", font=("Segoe UI", 16, "bold"), bg="#ffffff")
+title_label.pack(pady=10)
+
+status_label = Label(root, text="Press Start to begin.", font=("Segoe UI", 11), bg="#ffffff", fg="gray")
+status_label.pack()
+
+emotion_var = StringVar(value="Detected Emotion: None")
+emotion_label = Label(root, textvariable=emotion_var, font=("Segoe UI", 14), fg="#007acc", bg="#ffffff")
+emotion_label.pack(pady=5)
+
+canvas = Canvas(root, width=640, height=480, bg="black", bd=0, highlightthickness=0)
+canvas.pack(pady=10)
+
+# === Capture & Detection ===
+cap = cv2.VideoCapture(0)
+out = None
+
+def update_frame():
+    global frame_count, last_announced, after_id
+
+    if not running:
+        return
+
+    ret, frame = cap.read()
+    if not ret:
+        status_label.config(text="❌ Webcam read failed.")
+        return
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, 1.1, 5)
+
+    for (x, y, w, h) in faces:
+        roi = gray[y:y+h, x:x+w]
+        roi_resized = cv2.resize(roi, (48, 48)) / 255.0
+        reshaped = roi_resized.reshape(1, 48, 48, 1)
+
+        prediction = model.predict(reshaped)[0]
+        emotion_idx = np.argmax(prediction)
+        emotion = emotion_labels[emotion_idx]
+
+        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        cv2.putText(frame, emotion, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
+        emotion_var.set(f"Detected Emotion: {emotion}")
+
+        if frame_count % 30 == 0 and emotion != last_announced:
+            engine.say(f"You look {emotion}")
+            engine.runAndWait()
+            last_announced = emotion
+
+    frame_count += 1
+
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    img = Image.fromarray(rgb)
+    imgtk = ImageTk.PhotoImage(image=img)
+    canvas.create_image(0, 0, anchor=NW, image=imgtk)
+    canvas.image = imgtk
+
+    if out:
+        out.write(frame)
+
+    after_id = root.after(15, update_frame)
+
+# === Start/Stop Handlers ===
+def start_detection():
+    global running, out, frame_count, last_announced
+
+    if not running:
+        running = True
+        frame_count = 0
+        last_announced = None
+
+        filename = f"emotion_output_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.avi"
+        out = cv2.VideoWriter(filename, cv2.VideoWriter_fourcc(*'XVID'), 24, (640, 480))
+
+        status_label.config(text="🔴 Recording started...")
+        update_frame()
+
+def stop_detection():
+    global running, after_id
+
+    if running:
+        running = False
+        if after_id:
+            root.after_cancel(after_id)
+        if out:
+            out.release()
+        status_label.config(text="✅ Recording stopped. Video saved.")
+        emotion_var.set("Detected Emotion: None")
+
+# === Buttons ===
+button_frame = Frame(root, bg="#ffffff")
+button_frame.pack(pady=5)
+
+start_btn = ttk.Button(button_frame, text="▶ Start", command=start_detection)
+start_btn.grid(row=0, column=0, padx=15)
+
+stop_btn = ttk.Button(button_frame, text="⏹ Stop", command=stop_detection)
+stop_btn.grid(row=0, column=1, padx=15)
+
+# === Launch GUI ===
+root.mainloop()
+
+# === Cleanup ===
+cap.release()
+cv2.destroyAllWindows()
