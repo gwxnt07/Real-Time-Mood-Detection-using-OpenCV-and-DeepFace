@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from deepface import DeepFace
 from tkinter import *
-from tkinter import ttk
+from tkinter import ttk, filedialog
 from PIL import Image, ImageTk
 import pyttsx3
 import datetime
@@ -26,7 +26,7 @@ emotion_labels = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutr
 # === GUI Setup ===
 root = Tk()
 root.title("Real-Time Emotion Detector")
-root.geometry("740x720")  # Increased height for visibility
+root.geometry("740x720")
 root.configure(bg="#ffffff")
 root.resizable(True, True)
 
@@ -46,7 +46,7 @@ emotion_label.pack(pady=5)
 canvas = Canvas(root, width=640, height=480, bg="black", bd=0, highlightthickness=0)
 canvas.pack(pady=10)
 
-# === Capture & Detection ===
+# === Webcam Capture ===
 cap = cv2.VideoCapture(0)
 out = None
 
@@ -107,7 +107,7 @@ def start_detection():
         filename = f"emotion_output_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.avi"
         out = cv2.VideoWriter(filename, cv2.VideoWriter_fourcc(*'XVID'), 24, (640, 480))
 
-        status_label.config(text="🔴 Recording started...")
+        status_label.config(text="Recording started...")
         update_frame()
 
 def stop_detection():
@@ -119,18 +119,65 @@ def stop_detection():
             root.after_cancel(after_id)
         if out:
             out.release()
-        status_label.config(text="✅ Recording stopped. Video saved.")
+        status_label.config(text="Recording stopped. Video saved.")
         emotion_var.set("Detected Emotion: None")
+
+# === Video Upload Handler ===
+def analyze_uploaded_video():
+    video_path = filedialog.askopenfilename(filetypes=[("Video files", "*.mp4 *.avi")])
+    if not video_path:
+        return
+
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        status_label.config(text="❌ Failed to open video.")
+        return
+
+    status_label.config(text="Analyzing uploaded video...")
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.1, 5)
+
+        for (x, y, w, h) in faces:
+            roi = gray[y:y+h, x:x+w]
+            roi_resized = cv2.resize(roi, (48, 48)) / 255.0
+            reshaped = roi_resized.reshape(1, 48, 48, 1)
+
+            prediction = model.predict(reshaped)[0]
+            emotion_idx = np.argmax(prediction)
+            emotion = emotion_labels[emotion_idx]
+
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+            cv2.putText(frame, emotion, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
+
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img = Image.fromarray(rgb)
+        imgtk = ImageTk.PhotoImage(image=img)
+        canvas.create_image(0, 0, anchor=NW, image=imgtk)
+        canvas.image = imgtk
+        root.update_idletasks()
+        root.update()
+
+    cap.release()
+    status_label.config(text="Video analysis complete.")
 
 # === Buttons ===
 button_frame = Frame(root, bg="#ffffff")
 button_frame.pack(pady=5)
 
-start_btn = ttk.Button(button_frame, text="▶ Start", command=start_detection)
+start_btn = ttk.Button(button_frame, text="Start", command=start_detection)
 start_btn.grid(row=0, column=0, padx=15)
 
-stop_btn = ttk.Button(button_frame, text="⏹ Stop", command=stop_detection)
+stop_btn = ttk.Button(button_frame, text="Stop", command=stop_detection)
 stop_btn.grid(row=0, column=1, padx=15)
+
+upload_btn = ttk.Button(button_frame, text="Upload Video", command=analyze_uploaded_video)
+upload_btn.grid(row=0, column=2, padx=15)
 
 # === Launch GUI ===
 root.mainloop()
